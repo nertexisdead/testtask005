@@ -37,6 +37,7 @@
       <a id="new" href="/campaigns/new" class="btn btn-accent" hidden>＋ Новая кампания</a>
     </section>
     <p id="notice" role="status" aria-live="polite" hidden></p>
+    <div id="editor-loading" class="editor-loading" role="status" aria-atomic="true"></div>
     <section id="campaign-page" hidden>
         <div class="card">
           <div class="card-header campaign-card-header"><h2 class="card-title">Справочник кампаний</h2><span id="count"></span></div>
@@ -86,6 +87,7 @@
           <div class="card-header"><h2 class="card-title">Потоки</h2></div>
           <div class="card-body">
             <div class="geo-flow"><span>Фильтр по стране</span><strong id="routing"></strong></div>
+            <p id="campaign-state" class="mt-3 mb-0" hidden></p>
             <h3 class="offer-title">Ротация офферов</h3>
             <div class="table-responsive"><table class="table">
               <thead><tr><th scope="col">Оффер</th><th scope="col">Доля</th><th scope="col"><span class="sr-only">Действие</span></th></tr></thead>
@@ -99,6 +101,7 @@
         </section>
     </section>
   </main>
+  <div id="request-status" class="request-status" role="status" aria-atomic="true"></div>
   </div>
 </body>
 </html>

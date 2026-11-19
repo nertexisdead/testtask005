@@ -22,6 +22,10 @@ services:
     env_file: ./deploy/postgresql/local/postgres.env
     environment:
       DB_HOST: db
+      KEITARO_URL: ${KEITARO_URL:-}
+      KEITARO_API_KEY: ${KEITARO_API_KEY:-}
+      KEITARO_CAMPAIGN_PREFIX: ${KEITARO_CAMPAIGN_PREFIX:-test_komarov_}
+      KEITARO_ENABLE_ON_CREATE: ${KEITARO_ENABLE_ON_CREATE:-false}
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./application:/app:ro

@@ -1,3 +1,4 @@
+import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,6 +7,7 @@ from sqlalchemy import ForeignKey, select
 from sqlalchemy.orm import Mapped, Session as DatabaseSession, mapped_column, relationship
 
 from database import Base, Session
+from keitaro import KeitaroCampaignService
 
 
 class Offer(Base):
@@ -152,12 +154,20 @@ class CampaignService:
 
 
 def campaign_service():
+    if os.environ.get("KEITARO_URL") or os.environ.get("KEITARO_API_KEY"):
+        yield KeitaroCampaignService()
+        return
     with Session() as session:
         yield CampaignService(session)
 
 
-Service = Annotated[CampaignService, Depends(campaign_service)]
+Service = Annotated[CampaignService | KeitaroCampaignService, Depends(campaign_service)]
 router = APIRouter(prefix="/api")
+
+
+@router.get("/settings")
+def campaign_settings(service: Service):
+    return service.settings() if isinstance(service, KeitaroCampaignService) else None
 
 
 @router.get("/offers")

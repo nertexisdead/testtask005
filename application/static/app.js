@@ -16,16 +16,25 @@ jQuery(function ($) {
         $("#notice").text(message).toggleClass("error", error).prop("hidden", !message);
     }
 
-    async function run(work) {
+    async function run(message, work, button, status = $("#request-status")) {
         if (busy) return;
         busy = true;
         notice("");
+        $("#campaign-page, #offers-page, #editor-page").attr("aria-busy", "true");
+        status.append(
+            $("<span>", {class: "spinner-border spinner-border-sm", "aria-hidden": "true"}),
+            $("<span>").text(message)
+        );
+        button?.setAttribute("aria-disabled", "true");
         try {
             await work();
         } catch (error) {
             const detail = error.responseJSON?.detail;
             notice(typeof detail === "string" ? detail : "Не удалось выполнить запрос. Проверьте поля и попробуйте ещё раз.", true);
         } finally {
+            button?.removeAttribute("aria-disabled");
+            $("#campaign-page, #offers-page, #editor-page").attr("aria-busy", "false");
+            status.empty();
             busy = false;
         }
     }
@@ -35,6 +44,7 @@ jQuery(function ($) {
         catalog.filter(offer => !excluded.includes(offer.id)).forEach(offer => {
             select.append($("<option>").val(offer.id).text(`#${offer.id} · ${offer.name}`));
         });
+        return select[0].options.length > 1;
     }
 
     async function refreshList() {
@@ -49,11 +59,14 @@ jQuery(function ($) {
                 .text("Редактировать");
             const remove = $("<button>", {type: "button", class: "btn btn-sm btn-outline-danger"})
                 .text("Удалить")
-                .on("click", () => run(async () => {
-                    if (!await deleteCampaign(entry)) return;
-                    await refreshList();
-                    notice("Кампания удалена");
-                }));
+                .on("click", event => {
+                    if (busy || !confirmDelete(entry)) return;
+                    run("Удаляем кампанию…", async () => {
+                        await deleteCampaign(entry);
+                        await refreshList();
+                        notice("Кампания удалена");
+                    }, event.currentTarget);
+                });
             list.append($("<tr>").append(
                 $("<th>", {scope: "row"}).text(entry.name),
                 $("<td>", {"data-label": "Домен"}).text(entry.domain),
@@ -65,11 +78,8 @@ jQuery(function ($) {
         });
     }
 
-    async function deleteCampaign(value) {
-        if (!window.confirm(`Удалить кампанию «${value.name}»?`)) return false;
-        await request(`/api/campaigns/${value.id}`, "DELETE");
-        return true;
-    }
+    const confirmDelete = value => window.confirm(`Удалить кампанию «${value.name}»?`);
+    const deleteCampaign = value => request(`/api/campaigns/${value.id}`, "DELETE");
 
     function show(value) {
         campaign = value;
@@ -82,33 +92,39 @@ jQuery(function ($) {
         $("#save").text(value ? "Сохранить" : "Создать кампанию");
         if (!value) return;
         for (const field of ["name", "geo", "domain", "group", "source"]) {
-            form.elements[field].value = value[field];
+            form.elements[field].value = value.settings_ids?.[field] ?? value[field];
         }
-        $("#routing").text(`${value.flows[0].country} → Google`);
+        const geoFlow = value.flows[0];
+        $("#routing").text(geoFlow.url ? `${geoFlow.country} → ${geoFlow.url}` : geoFlow.country);
+        $("#campaign-state").text(value.state === "active" ? "Кампания активна в Keitaro" : "Кампания выключена в Keitaro")
+            .prop("hidden", !value.state);
         const offers = value.flows[1].offers;
+        const stateIsActive = offer => !offer.state || offer.state === "active";
+        const activeCount = offers.filter(stateIsActive).length;
         const rows = $("#offer-rows").empty();
         offers.forEach(offer => {
             const remove = $("<button>", {type: "button"}).addClass("btn btn-sm btn-outline-danger")
-                .prop("disabled", offers.length === 1)
+                .prop("disabled", stateIsActive(offer) && activeCount === 1)
                 .attr("aria-label", `Удалить оффер ${offer.name}`)
                 .text("Удалить")
-                .on("click", () => run(async () => {
+                .on("click", event => run("Удаляем оффер…", async () => {
                     show(await request(`/api/campaigns/${value.id}/offers/${offer.id}`, "DELETE"));
                     notice("Оффер удалён");
-                }));
+                }, event.currentTarget));
             rows.append($("<tr>").append(
-                $("<td>").text(`#${offer.id} · ${offer.name}`),
-                $("<td>").addClass("share").text(`${(offer.share_basis_points / 100).toLocaleString("ru", {maximumFractionDigits: 2})}%`),
+                $("<td>").text(`#${offer.id} · ${offer.name}${stateIsActive(offer) ? "" : " · выключен"}`),
+                $("<td>").addClass("share").text(stateIsActive(offer)
+                    ? `${(offer.share_basis_points / 100).toLocaleString("ru", {maximumFractionDigits: 2})}%` : "—"),
                 $("<td>").append(remove)
             ));
         });
-        options($("#add-offer"), offers.map(offer => offer.id));
-        $("#offer-form button").prop("disabled", offers.length >= catalog.length);
+        const hasAvailableOffers = options($("#add-offer"), offers.map(offer => offer.id));
+        $("#offer-form button").prop("disabled", !hasAvailableOffers);
     }
 
     $(form).on("submit", event => {
         event.preventDefault();
-        run(async () => {
+        run(campaign ? "Сохраняем кампанию…" : "Создаём кампанию…", async () => {
             const body = Object.fromEntries(new FormData(form));
             if (!campaign) body.offer_id = Number(body.offer_id);
             const editing = !!campaign;
@@ -119,27 +135,36 @@ jQuery(function ($) {
             }
             show(saved);
             notice("Кампания сохранена");
-        });
+        }, $("#save")[0]);
     });
 
-    $("#delete").on("click", () => run(async () => {
-        if (await deleteCampaign(campaign)) window.location.assign("/campaigns");
-    }));
+    $("#delete").on("click", event => {
+        if (busy || !confirmDelete(campaign)) return;
+        run("Удаляем кампанию…", async () => {
+            await deleteCampaign(campaign);
+            window.location.assign("/campaigns");
+        }, event.currentTarget);
+    });
 
     $("#offer-form").on("submit", event => {
         event.preventDefault();
-        run(async () => {
+        run("Добавляем оффер…", async () => {
             show(await request(`/api/campaigns/${campaign.id}/offers`, "POST", {
                 offer_id: Number($("#add-offer").val())
             }));
             notice("Оффер добавлен");
-        });
+        }, $("#offer-form button")[0]);
     });
 
-    run(async () => {
-        const path = window.location.pathname;
+    const path = window.location.pathname;
+    const editorPage = path.startsWith("/campaigns/");
+    const creating = path === "/campaigns/new";
+    const loadingMessage = editorPage
+        ? (creating ? "Загружаем справочники и офферы…" : "Загружаем кампанию и офферы…")
+        : "Загружаем данные…";
+
+    run(loadingMessage, async () => {
         const offersPage = path === "/offers";
-        const editorPage = path.startsWith("/campaigns/");
         $("#nav-offers").toggleClass("active", offersPage);
         $("#nav-campaigns").toggleClass("active", !offersPage);
         if (!offersPage && !editorPage) {
@@ -159,12 +184,27 @@ jQuery(function ($) {
             });
             return;
         }
-        const creating = path === "/campaigns/new";
         $("#page-title").text(creating ? "Новая кампания" : "Редактор кампании");
         $("#back").prop("hidden", false);
-        catalog = await request("/api/offers");
+        const [offers, remoteSettings, currentCampaign] = await Promise.all([
+            request("/api/offers"),
+            request("/api/settings"),
+            creating ? null : request(`/api${path}`)
+        ]);
+        catalog = offers;
+        if (remoteSettings) {
+            for (const field of ["domain", "group", "source"]) {
+                const select = $("<select>", {class: "form-control", name: field, required: true});
+                optionsForSettings(select, remoteSettings[field]);
+                $(form.elements[field]).replaceWith(select);
+            }
+        }
         options($("#offer"));
-        show(creating ? null : await request(`/api${path}`));
+        show(currentCampaign);
         $("#editor-page").prop("hidden", false);
-    });
+    }, undefined, editorPage ? $("#editor-loading") : $("#request-status"));
+
+    function optionsForSettings(select, entries) {
+        entries.forEach(entry => select.append($("<option>").val(entry.id).text(entry.name)));
+    }
 });
