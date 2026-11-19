@@ -1,13 +1,16 @@
-# Кампании Keitaro
+# Adrobot · справочник кампаний
 
-Локальное окружение для сервиса управления кампаниями Keitaro. Caddy проксирует запросы в FastAPI, который раздаёт API и статический HTML с jQuery. SQLAlchemy подключается к PostgreSQL 17 через psycopg. Для работы с базой в браузере есть pgAdmin.
+Локальный прототип справочника кампаний. Он хранит кампании, демонстрационные офферы и их связи в PostgreSQL. Интерфейс отображает предполагаемые потоки. Интеграция с Keitaro, реальные перенаправления и статистика пока отсутствуют.
+
+Caddy проксирует запросы в FastAPI, который раздаёт API и интерфейс на AdminLTE с jQuery. SQLAlchemy подключается к PostgreSQL 17 через psycopg. Для работы с базой в браузере есть pgAdmin.
 
 ## Локальный запуск
 
-Установите Docker с Compose и из корня проекта выполните:
+Запустите Docker Engine или Docker Desktop с Linux-контейнерами. Из корня проекта выполните:
 
 ```sh
 docker compose -f docker-compose.local.yml up --build --wait
+docker compose -f docker-compose.local.yml ps
 ```
 
 - [Стартовая страница](http://127.0.0.1:8000/) открывает справочник кампаний на AdminLTE.
@@ -30,10 +33,21 @@ PostgreSQL и FastAPI доступны внутри сети Compose. Данны
 
 ## Миграции
 
-При запуске контейнер FastAPI применяет миграции Alembic. Первичная миграция создаёт таблицы справочника и добавляет три демонстрационных оффера. Применить миграции вручную:
+При запуске контейнер FastAPI применяет миграции Alembic. Первичная миграция создаёт таблицы справочника и добавляет три демонстрационных оффера. Проверить установленную ревизию и соответствие схемы моделям:
 
 ```sh
-docker compose -f docker-compose.local.yml exec app alembic upgrade head
+docker compose -f docker-compose.local.yml exec app alembic current
+docker compose -f docker-compose.local.yml exec app alembic check
 ```
+
+Если приложение не запустилось из-за ошибки миграции, проверьте `docker compose -f docker-compose.local.yml logs app`. После исправления ошибки можно применить миграции через отдельный контейнер:
+
+```sh
+docker compose -f docker-compose.local.yml up -d --wait db
+docker compose -f docker-compose.local.yml run --rm --no-deps app alembic upgrade head
+docker compose -f docker-compose.local.yml up --build --wait
+```
+
+## Справочник
 
 В справочнике можно создавать, открывать, редактировать и удалять кампании, а также добавлять и удалять офферы в каждой кампании. Доли рассчитываются поровну с точностью до сотой процента и в сумме дают 100%. Справочник хранится в локальной базе. Потоки в интерфейсе показывают сохранённую конфигурацию кампании.
