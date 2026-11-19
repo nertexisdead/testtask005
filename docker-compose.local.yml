@@ -18,7 +18,7 @@ services:
 
   app:
     build: ./application
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--reload"]
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --reload"]
     env_file: ./deploy/postgresql/local/postgres.env
     environment:
       DB_HOST: db

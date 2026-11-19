@@ -1,21 +1,25 @@
-import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from campaigns import router
+from database import engine
+
 app = FastAPI(title="Keitaro Campaigns")
-database_url = URL.create(
-    "postgresql+psycopg",
-    username=os.environ["POSTGRES_USER"],
-    password=os.environ["POSTGRES_PASSWORD"],
-    host=os.environ["DB_HOST"],
-    database=os.environ["POSTGRES_DB"],
-)
-engine = create_engine(database_url, pool_pre_ping=True)
+app.include_router(router)
+static_dir = Path(__file__).with_name("static")
+
+
+@app.get("/campaigns", include_in_schema=False)
+@app.get("/campaigns/new", include_in_schema=False)
+@app.get("/campaigns/{campaign_id:int}", include_in_schema=False)
+@app.get("/offers", include_in_schema=False)
+def dashboard():
+    return FileResponse(static_dir / "index.html")
 
 
 @app.get("/api/health")
@@ -30,6 +34,6 @@ def health() -> dict[str, str]:
 
 app.mount(
     "/",
-    StaticFiles(directory=Path(__file__).with_name("static"), html=True),
+    StaticFiles(directory=static_dir, html=True),
     name="frontend",
 )
