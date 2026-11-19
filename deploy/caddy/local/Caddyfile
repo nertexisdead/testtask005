@@ -1,0 +1,11 @@
+http://:80 {
+	encode gzip zstd
+
+	log {
+		output stdout
+		format console
+		level WARN
+	}
+
+	reverse_proxy app:8000
+}

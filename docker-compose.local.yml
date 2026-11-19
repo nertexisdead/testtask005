@@ -1,0 +1,71 @@
+name: keitaro-campaigns-local
+
+services:
+  caddy:
+    image: caddy:2.11.4-alpine@sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:80"
+    volumes:
+      - ./deploy/caddy/local/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/health"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+
+  app:
+    build: ./application
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--reload"]
+    env_file: ./deploy/postgresql/local/postgres.env
+    environment:
+      DB_HOST: db
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./application:/app:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health', timeout=3).close()"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+
+  db:
+    image: postgres:17-alpine
+    env_file: ./deploy/postgresql/local/postgres.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  pgadmin:
+    image: dpage/pgadmin4:9.12.0@sha256:10137f33be7ed61e47f56004493710cb5b80ba7fb0ca01758855e242f1f284a7
+    environment:
+      PGADMIN_DISABLE_POSTFIX: "yes"
+      PGADMIN_DEFAULT_EMAIL: admin@keitaro.example.org
+      PGADMIN_DEFAULT_PASSWORD: localadmin
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./deploy/pgadmin/local/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/misc/ping"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  pgadmin_data:
