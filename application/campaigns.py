@@ -7,7 +7,7 @@ from sqlalchemy import ForeignKey, select
 from sqlalchemy.orm import Mapped, Session as DatabaseSession, mapped_column, relationship
 
 from database import Base, Session
-from keitaro import KeitaroCampaignService
+from keitaro import CAMPAIGN_NAME_MAX_LENGTH, KeitaroCampaignService
 
 
 class Offer(Base):
@@ -47,7 +47,7 @@ class OfferInput(BaseModel):
 
 
 class CampaignFields(BaseModel):
-    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=CAMPAIGN_NAME_MAX_LENGTH)]
     geo: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[A-Za-z]{2}$")]
     domain: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
     group: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]

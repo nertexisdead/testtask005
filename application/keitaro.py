@@ -8,6 +8,18 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 
+CAMPAIGN_NAME_MAX_LENGTH = 120
+VALIDATION_FIELDS = {
+    "name": "название кампании",
+    "alias": "идентификатор кампании",
+    "domain_id": "домен",
+    "group_id": "группа",
+    "traffic_source_id": "источник",
+    "filters": "фильтры потока",
+    "offers": "офферы потока",
+}
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -17,7 +29,10 @@ class KeitaroCampaignService:
     def __init__(self):
         base = os.environ.get("KEITARO_URL", "").rstrip("/")
         key = os.environ.get("KEITARO_API_KEY", "")
-        parsed = urlsplit(base)
+        try:
+            parsed = urlsplit(base)
+        except ValueError as error:
+            raise HTTPException(503, "Некорректный HTTPS-адрес Keitaro") from error
         if (parsed.scheme != "https" or not parsed.hostname or parsed.path
                 or parsed.query or parsed.fragment or parsed.username is not None or not key):
             raise HTTPException(503, "Укажите HTTPS-адрес Keitaro без пути и API-ключ")
@@ -36,8 +51,19 @@ class KeitaroCampaignService:
                 raw = response.read()
                 return json.loads(raw) if raw else None
         except HTTPError as error:
-            status = 404 if error.code == 404 else 502
-            raise HTTPException(status, f"Keitaro вернул HTTP {error.code} для {method} {path}") from error
+            detail = f"Keitaro вернул HTTP {error.code} для {method} {path}"
+            status = {404: 404, 409: 409, 422: 422}.get(error.code, 502)
+            if error.code == 422:
+                try:
+                    fields = json.loads(error.read(8192))
+                except ValueError:
+                    fields = None
+                if isinstance(fields, dict):
+                    labels = [label for field, label in VALIDATION_FIELDS.items() if field in fields]
+                    if labels:
+                        detail += ". Проверьте: " + ", ".join(labels)
+            error.close()
+            raise HTTPException(status, detail) from error
         except (URLError, TimeoutError, ValueError) as error:
             raise HTTPException(502, "Не удалось получить ответ от Keitaro") from error
 
@@ -81,6 +107,9 @@ class KeitaroCampaignService:
         }
 
     def _payload(self, data):
+        name = data.name if data.name.startswith(self.prefix) else self.prefix + data.name
+        if len(name) > CAMPAIGN_NAME_MAX_LENGTH:
+            raise HTTPException(422, f"Название с префиксом должно быть не длиннее {CAMPAIGN_NAME_MAX_LENGTH} символов")
         settings = self.settings()
         values = {}
         for field in ("domain", "group", "source"):
@@ -89,7 +118,6 @@ class KeitaroCampaignService:
             if item is None:
                 raise HTTPException(422, f"Выберите значение Keitaro для поля {field}")
             values[field] = item["id"]
-        name = data.name if data.name.startswith(self.prefix) else self.prefix + data.name
         return {"name": name, "domain_id": values["domain"], "group_id": values["group"],
                 "traffic_source_id": values["source"]}
 
